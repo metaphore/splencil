@@ -8,6 +8,15 @@
 
 Paste clipboard images into Blender Texture Paint as stencils. Optional background removal uses `rembg`.
 
+## Use
+
+In Blender, switch your object to **Texture Paint**, then open the 3D View sidebar with `N` and find **Splencil**.
+
+- **Paste**: clipboard image -> stencil
+- **BG Remove**: paste with background removal
+- **Reset**: fit/reset stencil transform
+- **Stamp**: paint the current stencil once
+- **Settings**: blend mode and rembg options
 ## Install
 
 Download `splencil-*.zip` from Releases, then Blender > Preferences > Add-ons > Install from Disk. Enable **Splencil**.
