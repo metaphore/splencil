@@ -1058,7 +1058,13 @@ class PAINT_OT_stamp_splencil(bpy.types.Operator):
             return {"CANCELLED"}
 
 
-class SPLENCIL_PT_view3d_panel(bpy.types.Panel):
+class SPLENCIL_PT_texture_paint_panel:
+    @classmethod
+    def poll(cls, context):
+        return texture_paint_poll(context)
+
+
+class SPLENCIL_PT_view3d_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel):
     bl_label = "Splencil"
     bl_idname = "SPLENCIL_PT_view3d_panel"
     bl_space_type = "VIEW_3D"
@@ -1069,7 +1075,7 @@ class SPLENCIL_PT_view3d_panel(bpy.types.Panel):
         pass
 
 
-class SPLENCIL_PT_actions_panel(bpy.types.Panel):
+class SPLENCIL_PT_actions_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel):
     bl_label = "Actions"
     bl_idname = "SPLENCIL_PT_actions_panel"
     bl_space_type = "VIEW_3D"
@@ -1087,7 +1093,7 @@ class SPLENCIL_PT_actions_panel(bpy.types.Panel):
         row.operator(PAINT_OT_stamp_splencil.bl_idname, text="Stamp", icon="BRUSH_DATA")
 
 
-class SPLENCIL_PT_settings_panel(bpy.types.Panel):
+class SPLENCIL_PT_settings_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel):
     bl_label = "Settings"
     bl_idname = "SPLENCIL_PT_settings_panel"
     bl_space_type = "VIEW_3D"
@@ -1107,7 +1113,7 @@ class SPLENCIL_PT_settings_panel(bpy.types.Panel):
             row.label(text="Blend: No active brush")
 
 
-class SPLENCIL_PT_rembg_panel(bpy.types.Panel):
+class SPLENCIL_PT_rembg_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel):
     bl_label = "Background Removal"
     bl_idname = "SPLENCIL_PT_rembg_panel"
     bl_space_type = "VIEW_3D"
@@ -1125,7 +1131,7 @@ class SPLENCIL_PT_rembg_panel(bpy.types.Panel):
             layout.prop(prefs, "rembg_edge_mode", text="Edges")
 
 
-class SPLENCIL_PT_hotkeys_panel(bpy.types.Panel):
+class SPLENCIL_PT_hotkeys_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel):
     bl_label = "Hotkeys"
     bl_idname = "SPLENCIL_PT_hotkeys_panel"
     bl_space_type = "VIEW_3D"
