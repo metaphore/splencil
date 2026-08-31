@@ -10,12 +10,12 @@ Paste clipboard images into Blender Texture Paint as stencils. Optional backgrou
 
 ## Install
 
-1. Copy `splencil.py` plus `helpers/cliprembg.py` into Blender's `scripts/addons` folder, or install a zip/folder with both files.
-2. Enable **Splencil** in Blender Preferences > Add-ons.
-3. For background removal, use **Install Dependencies** in the Splencil addon preferences, or run:
+1. Download the latest `splencil-*.zip` from GitHub Releases. Do not use GitHub's generated source-code zip.
+2. In Blender: Edit > Preferences > Add-ons > Install from Disk, select the zip, then enable **Splencil**.
+3. For background removal: expand Splencil preferences and click **Install Dependencies**. This needs internet access and may take a while.
+
+If dependency install fails, set **Python executable** in Splencil preferences, click **Check Dependencies**, then **Install Dependencies** again. Manual fallback:
 
 ```sh
 python -m pip install Pillow numpy rembg
 ```
-
-Set `CLIPREMBG_PYTHON` if Blender should use a specific Python executable.
