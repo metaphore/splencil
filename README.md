@@ -18,8 +18,11 @@ For background removal, open Splencil preferences and click **Install Dependenci
 
 In Blender, switch your object to **Texture Paint**, then open the 3D View sidebar with `N` and find **Splencil**.
 
-- **Paste**: clipboard image -> stencil
-- **BG Remove**: paste with background removal
-- **Reset**: fit/reset stencil transform
-- **Stamp**: paint the current stencil once
+![Splencil panel](assets/splencil-panel.png)
+
+- **Paste** (`Ctrl+V`): clipboard image -> stencil
+- **BG Remove** (`Ctrl+Shift+V`): paste with background removal
+- **Reset** (`Ctrl+R`): fit/reset stencil transform
+- **Stamp** (`Ctrl+D`): paint the current stencil once
+- **Hardness** (`Alt+F`): brush edge hardness
 - **Settings**: blend mode and rembg options
