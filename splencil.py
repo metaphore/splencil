@@ -24,6 +24,7 @@ import zlib
 
 import blf
 import bpy
+from bpy.app.handlers import persistent
 from bpy.props import EnumProperty, FloatProperty, StringProperty
 
 
@@ -331,6 +332,7 @@ def get_or_create_blender_image(width, height, rgba_pixels):
     if image is None:
         image = bpy.data.images.new(IMAGE_NAME, width=width, height=height, alpha=True)
 
+    image.is_runtime_data = True
     image.pixels.foreach_set([component / 255.0 for component in rgba_pixels])
     image.update()
     return image
@@ -343,7 +345,9 @@ def load_png_as_stencil_image(path):
 
     image = bpy.data.images.load(path, check_existing=False)
     image.name = IMAGE_NAME
+    image.is_runtime_data = True
     try:
+        # Keep pixels alive after the temporary PNG is deleted, without saving them.
         image.pack()
     except Exception:
         pass
@@ -538,6 +542,8 @@ def get_or_create_stencil_texture(image):
         texture = bpy.data.textures.new(TEXTURE_NAME, type="IMAGE")
     else:
         texture.type = "IMAGE"
+    texture.is_runtime_data = True
+    image.is_runtime_data = True
     texture.image = image
     return texture
 
@@ -1185,8 +1191,26 @@ def remove_clipboard_keymaps():
             keymap.keymap_items.remove(item)
 
 
+@persistent
+def mark_stencil_runtime(_unused=None):
+    """Exclude disposable stencils, including those saved by older addon versions."""
+    for collection, name in (
+        (bpy.data.images, IMAGE_NAME),
+        (bpy.data.textures, TEXTURE_NAME),
+    ):
+        datablock = collection.get(name)
+        if datablock is not None and datablock.library is None:
+            datablock.is_runtime_data = True
+
+
 def register():
     remove_clipboard_keymaps()
+    # Blender restricts bpy.data during add-on registration.
+    if not bpy.app.timers.is_registered(mark_stencil_runtime):
+        bpy.app.timers.register(mark_stencil_runtime, first_interval=0.0)
+    for handlers in (bpy.app.handlers.load_post, bpy.app.handlers.save_pre):
+        if mark_stencil_runtime not in handlers:
+            handlers.append(mark_stencil_runtime)
 
     bpy.types.Scene.splencil_edge_hardness = FloatProperty(
         name="Brush Edge Hardness %",
@@ -1261,6 +1285,11 @@ def register():
 
 
 def unregister():
+    if bpy.app.timers.is_registered(mark_stencil_runtime):
+        bpy.app.timers.unregister(mark_stencil_runtime)
+    for handlers in (bpy.app.handlers.load_post, bpy.app.handlers.save_pre):
+        if mark_stencil_runtime in handlers:
+            handlers.remove(mark_stencil_runtime)
     stop_rembg_worker()
     remove_clipboard_keymaps()
 
