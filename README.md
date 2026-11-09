@@ -20,4 +20,4 @@ Switch to **Texture Paint**, open the 3D View sidebar with `N`, then find **Sple
 
 | Panel | Actions |
 |---|---|
-| ![Splencil panel](assets/splencil-panel.png) | **Paste** `Ctrl+V`<br>Clipboard image -> stencil<br><br>**BG Remove** `Ctrl+Shift+V`<br>Paste with background removal<br><br>**Reset** `Ctrl+R`<br>Fit/reset stencil transform<br><br>**Stamp** `Ctrl+D`<br>Paint the current stencil once<br><br>**Hardness** `Alt+F`<br>Brush edge hardness |
+| ![Splencil panel](assets/splencil-panel.png) | **Paste** `Ctrl+V`<br>Clipboard image -> stencil<br><br>**BG Remove** `Ctrl+Shift+V`<br>Paste with background removal<br><br>**Reset** `Ctrl+R`<br>Fit/reset stencil transform<br><br>**Stamp** `Ctrl+D`<br>Paint the current stencil once<br><br>**Flip Horizontal** `Ctrl+Shift+H`<br>Mirror stencil left to right; press again to restore<br><br>**Hardness** `Alt+F`<br>Brush edge hardness |

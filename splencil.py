@@ -892,6 +892,37 @@ class PAINT_OT_reset_splencil(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PAINT_OT_flip_splencil_horizontal(bpy.types.Operator):
+    bl_idname = "paint.flip_splencil_horizontal"
+    bl_label = "Flip Splencil Horizontally"
+    bl_description = "Mirror the stencil left to right without changing its position, size, or rotation"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        if not texture_paint_poll(context):
+            return False
+        brush = get_active_texture_paint_brush(context)
+        return (
+            brush is not None
+            and brush.texture is not None
+            and brush.texture.type == "IMAGE"
+            and brush.texture.image is not None
+            and brush.texture_slot.map_mode == "STENCIL"
+        )
+
+    def execute(self, context):
+        try:
+            brush = get_mutable_texture_paint_brush(context)
+            # Mirror texture coordinates; negative stencil dimensions prevent painting.
+            brush.texture_slot.scale.x = -brush.texture_slot.scale.x
+            redraw_ui(context)
+        except Exception as exc:
+            self.report({"ERROR"}, f"Splencil horizontal flip failed: {exc}")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
 class PAINT_OT_paste_splencil(bpy.types.Operator):
     bl_idname = "paint.paste_splencil"
     bl_label = "Paste Clipboard as Stencil"
@@ -1097,6 +1128,7 @@ class SPLENCIL_PT_actions_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel
         row = layout.row(align=True)
         row.operator(PAINT_OT_reset_splencil.bl_idname, text="Reset", icon="FILE_REFRESH")
         row.operator(PAINT_OT_stamp_splencil.bl_idname, text="Stamp", icon="BRUSH_DATA")
+        layout.operator(PAINT_OT_flip_splencil_horizontal.bl_idname, text="Flip Horizontal", icon="ARROW_LEFTRIGHT")
 
 
 class SPLENCIL_PT_settings_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel):
@@ -1152,6 +1184,7 @@ class SPLENCIL_PT_hotkeys_panel(SPLENCIL_PT_texture_paint_panel, bpy.types.Panel
         layout.label(text="Ctrl+Shift+V BG Remove")
         layout.label(text="Ctrl+R Reset")
         layout.label(text="Ctrl+D Stamp")
+        layout.label(text="Ctrl+Shift+H Flip Horizontal")
         layout.label(text="Alt+F Hardness")
 
 
@@ -1163,6 +1196,7 @@ SPLENCIL_KEYMAP_IDNAMES = {
     PAINT_OT_paste_splencil_rembg.bl_idname,
     PAINT_OT_reset_splencil.bl_idname,
     PAINT_OT_stamp_splencil.bl_idname,
+    PAINT_OT_flip_splencil_horizontal.bl_idname,
     f"paint.paste_{LEGACY_KEYMAP_SUFFIX}",
     f"paint.paste_{LEGACY_KEYMAP_SUFFIX}_rembg",
     f"paint.reset_{LEGACY_KEYMAP_SUFFIX}",
@@ -1228,6 +1262,7 @@ def register():
     bpy.utils.register_class(PAINT_OT_paste_splencil_rembg)
     bpy.utils.register_class(PAINT_OT_reset_splencil)
     bpy.utils.register_class(PAINT_OT_stamp_splencil)
+    bpy.utils.register_class(PAINT_OT_flip_splencil_horizontal)
     bpy.utils.register_class(SPLENCIL_PT_view3d_panel)
     bpy.utils.register_class(SPLENCIL_PT_actions_panel)
     bpy.utils.register_class(SPLENCIL_PT_settings_panel)
@@ -1271,6 +1306,15 @@ def register():
         )
         addon_keymaps.append((keymap, stamp_item))
 
+        flip_item = keymap.keymap_items.new(
+            PAINT_OT_flip_splencil_horizontal.bl_idname,
+            type="H",
+            value="PRESS",
+            ctrl=True,
+            shift=True,
+        )
+        addon_keymaps.append((keymap, flip_item))
+
         hardness_item = keymap.keymap_items.new(
             "wm.radial_control",
             type="F",
@@ -1303,6 +1347,7 @@ def unregister():
         SPLENCIL_PT_actions_panel,
         SPLENCIL_PT_view3d_panel,
         PAINT_OT_stamp_splencil,
+        PAINT_OT_flip_splencil_horizontal,
         PAINT_OT_reset_splencil,
         PAINT_OT_paste_splencil_rembg,
         PAINT_OT_paste_splencil,
