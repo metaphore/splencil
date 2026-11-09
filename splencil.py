@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Splencil",
     "author": "Anton Chekulaev",
-    "version": (0, 1, 0),
+    "version": (1, 0, 0),
     "blender": (4, 5, 0),
     "location": "3D Viewport > Texture Paint",
     "description": "Paste and stamp clipboard images as Texture Paint stencils",
