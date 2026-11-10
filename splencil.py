@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Splencil",
     "author": "Anton Chekulaev",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (4, 5, 0),
     "location": "3D Viewport > Texture Paint",
     "description": "Paste and stamp clipboard images as Texture Paint stencils",
@@ -11,6 +11,7 @@ bl_info = {
 import binascii
 import ctypes
 import json
+import math
 import os
 import shlex
 import shutil
@@ -26,11 +27,14 @@ import blf
 import bpy
 from bpy.app.handlers import persistent
 from bpy.props import EnumProperty, FloatProperty, StringProperty
+from mathutils import Matrix, Vector
 
 
 IMAGE_NAME = "__SplencilImage"
 TEXTURE_NAME = "__SplencilTexture"
 BRUSH_NAME = "__SplencilBrush"
+BRUSH_PREVIEW_PATH = os.path.join(os.path.dirname(__file__), "assets", "splencil-brush.png")
+BRUSH_PREVIEW_REVISION = 2
 REMBG_HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers", "cliprembg.py")
 REMBG_BUSY_MESSAGE = "Removing clipboard background..."
 PYTHON_PROBE_CACHE = {}
@@ -506,16 +510,40 @@ def get_active_texture_paint_brush(context):
     return getattr(image_paint, "brush", None)
 
 
-def activate_clipboard_brush_asset(context, source_brush):
+def load_splencil_brush_preview(context, brush):
+    if (
+        brush.get("_splencil_brush_preview") == BRUSH_PREVIEW_REVISION
+        and brush.preview
+        and brush.preview.is_image_custom
+    ):
+        return
+    if not os.path.isfile(BRUSH_PREVIEW_PATH):
+        return
+    try:
+        with context.temp_override(id=brush):
+            result = bpy.ops.ed.lib_id_load_custom_preview(filepath=BRUSH_PREVIEW_PATH)
+        if "FINISHED" in result:
+            brush["_splencil_brush_preview"] = BRUSH_PREVIEW_REVISION
+    except RuntimeError as exc:
+        print(f"Splencil: could not load brush preview: {exc}")
+
+
+def activate_clipboard_brush_asset(context, source_brush, *, brush_type=None):
+    if brush_type is None:
+        brush_type = source_brush.image_brush_type
     local_brush = bpy.data.brushes.get(BRUSH_NAME)
     if local_brush is None:
-        local_brush = source_brush.copy()
-        local_brush.name = BRUSH_NAME
+        if source_brush is not None and source_brush.image_brush_type == brush_type:
+            local_brush = source_brush.copy()
+            local_brush.name = BRUSH_NAME
+        else:
+            local_brush = bpy.data.brushes.new(BRUSH_NAME, mode="TEXTURE_PAINT")
 
     local_brush.use_paint_image = True
-    local_brush.image_brush_type = getattr(source_brush, "image_brush_type", "DRAW")
+    local_brush.image_brush_type = brush_type
     if local_brush.asset_data is None:
         local_brush.asset_mark()
+    load_splencil_brush_preview(context, local_brush)
 
     result = bpy.ops.brush.asset_activate(
         asset_library_type="LOCAL",
@@ -548,8 +576,9 @@ def get_or_create_stencil_texture(image):
     return texture
 
 
-def assign_stencil_to_active_brush(context, image):
-    brush = get_mutable_texture_paint_brush(context)
+def assign_stencil_to_active_brush(context, image, brush=None):
+    if brush is None:
+        brush = get_mutable_texture_paint_brush(context)
     texture = get_or_create_stencil_texture(image)
 
     image_paint = getattr(context.tool_settings, "image_paint", None)
@@ -566,23 +595,32 @@ def redraw_ui(context):
         area.tag_redraw()
 
 
-def reset_stencil_keep_position(context):
-    brush = get_active_texture_paint_brush(context)
-    old_pos = brush.stencil_pos.copy() if brush else None
-
-    bpy.ops.brush.stencil_reset_transform(mask=False)
-    bpy.ops.brush.stencil_fit_image_aspect(use_repeat=True, use_scale=True, mask=False)
-
-    brush = get_active_texture_paint_brush(context)
-    if brush and old_pos is not None:
-        brush.stencil_pos = old_pos
-        brush.texture_slot.angle = 0.0
-
-
 def apply_stencil_image(context, image):
-    assign_stencil_to_active_brush(context, image)
+    region = next(region for region in context.area.regions if region.type == "WINDOW")
+    with context.temp_override(region=region):
+        tool = context.workspace.tools.from_space_view3d_mode("PAINT_TEXTURE")
+        if tool is None or tool.idname != "builtin.brush":
+            result = bpy.ops.wm.tool_set_by_id(name="builtin.brush")
+            if "FINISHED" not in result:
+                raise ClipboardImageError("Could not switch to the Texture Paint brush tool")
+
+        brush = activate_clipboard_brush_asset(
+            context, get_active_texture_paint_brush(context), brush_type="DRAW"
+        )
+        brush.color = (1.0, 1.0, 1.0)
+        image_paint = context.tool_settings.image_paint
+        unified = getattr(image_paint, "unified_paint_settings", None)
+        if unified is None:
+            unified = context.tool_settings.unified_paint_settings
+        if unified.use_unified_color:
+            unified.color = brush.color
+
+        assign_stencil_to_active_brush(context, image, brush=brush)
+        bpy.ops.brush.stencil_reset_transform(mask=False)
+        bpy.ops.brush.stencil_fit_image_aspect(use_repeat=True, use_scale=True, mask=False)
+        brush.stencil_pos = (region.width * 0.5, region.height * 0.5)
+        brush.texture_slot.angle = 0.0
     redraw_ui(context)
-    reset_stencil_keep_position(context)
 
 
 def set_brush_edge_hardness(context, value):
@@ -921,6 +959,92 @@ class PAINT_OT_flip_splencil_horizontal(bpy.types.Operator):
             self.report({"ERROR"}, f"Splencil horizontal flip failed: {exc}")
             return {"CANCELLED"}
         return {"FINISHED"}
+
+
+class PAINT_OT_transform_splencil(bpy.types.Operator):
+    bl_idname = "paint.transform_splencil"
+    bl_label = "Transform Splencil Around Cursor"
+    bl_options = {"BLOCKING"}
+
+    mode: EnumProperty(
+        items=(
+            ("ROTATE", "Rotate", "Rotate around the starting cursor position"),
+            ("SCALE", "Scale", "Scale around the starting cursor position"),
+        ),
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if not texture_paint_poll(context) or not context.region or context.region.type != "WINDOW":
+            return False
+        brush = get_active_texture_paint_brush(context)
+        return (
+            brush is not None
+            and brush.library is None
+            and brush.texture is not None
+            and brush.texture.name == TEXTURE_NAME
+            and brush.texture.image is not None
+            and brush.texture_slot.map_mode == "STENCIL"
+        )
+
+    def invoke(self, context, event):
+        self._brush = get_active_texture_paint_brush(context)
+        self._pivot = Vector((event.mouse_region_x, event.mouse_region_y))
+        self._center = self._brush.stencil_pos.copy()
+        self._dimensions = self._brush.stencil_dimension.copy()
+        self._angle = self._brush.texture_slot.angle
+        self._button = event.type
+        self._scale_axis = None
+        # Keep radial drag controls usable even when starting at the stencil center.
+        self._handle = self._pivot - self._center
+        if self._handle.length < 8.0:
+            self._handle = Vector((64.0, 0.0))
+        context.window_manager.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type == "ESC" and event.value == "PRESS":
+            self.cancel(context)
+            return {"CANCELLED"}
+        if event.type == self._button and event.value == "RELEASE":
+            return {"FINISHED"}
+        if self.mode == "SCALE" and event.type in {"X", "Y"} and event.value == "PRESS":
+            if event.is_repeat:
+                return {"RUNNING_MODAL"}
+            axis = 0 if event.type == "X" else 1
+            self._scale_axis = None if self._scale_axis == axis else axis
+        elif event.type != "MOUSEMOVE":
+            return {"RUNNING_MODAL"}
+
+        mouse = Vector((event.mouse_region_x, event.mouse_region_y))
+        handle = self._handle + (mouse - self._pivot)
+        offset = self._center - self._pivot
+        if self.mode == "ROTATE":
+            if handle.length_squared == 0.0:
+                return {"RUNNING_MODAL"}
+            angle = math.atan2(handle.y, handle.x) - math.atan2(self._handle.y, self._handle.x)
+            self._brush.texture_slot.angle = (self._angle + angle) % math.tau
+            offset = Matrix.Rotation(angle, 2) @ offset
+        else:
+            scale = max(0.01, handle.length / self._handle.length)
+            factors = Vector((scale, scale))
+            if self._scale_axis is not None:
+                factors[1 - self._scale_axis] = 1.0
+            scaling = Matrix.Diagonal(factors)
+            # Scale the offset in the stencil's rotated axes to keep the pivot fixed.
+            rotation = Matrix.Rotation(self._angle, 2)
+            offset = rotation @ scaling @ rotation.transposed() @ offset
+            self._brush.stencil_dimension = scaling @ self._dimensions
+        self._brush.stencil_pos = self._pivot + offset
+        context.area.tag_redraw()
+        return {"RUNNING_MODAL"}
+
+    def cancel(self, context):
+        self._brush.stencil_pos = self._center
+        self._brush.stencil_dimension = self._dimensions
+        self._brush.texture_slot.angle = self._angle
+        if context.area:
+            context.area.tag_redraw()
 
 
 class PAINT_OT_paste_splencil(bpy.types.Operator):
@@ -1263,6 +1387,7 @@ def register():
     bpy.utils.register_class(PAINT_OT_reset_splencil)
     bpy.utils.register_class(PAINT_OT_stamp_splencil)
     bpy.utils.register_class(PAINT_OT_flip_splencil_horizontal)
+    bpy.utils.register_class(PAINT_OT_transform_splencil)
     bpy.utils.register_class(SPLENCIL_PT_view3d_panel)
     bpy.utils.register_class(SPLENCIL_PT_actions_panel)
     bpy.utils.register_class(SPLENCIL_PT_settings_panel)
@@ -1327,6 +1452,14 @@ def register():
         hardness_item.properties.image_id = "tool_settings.image_paint.brush"
         addon_keymaps.append((keymap, hardness_item))
 
+        paint_keymap = keyconfig.keymaps.new(name="Image Paint", region_type="WINDOW")
+        for mode, modifiers in (("SCALE", {"shift": True}), ("ROTATE", {"ctrl": True})):
+            item = paint_keymap.keymap_items.new(
+                PAINT_OT_transform_splencil.bl_idname, type="RIGHTMOUSE", value="PRESS", **modifiers
+            )
+            item.properties.mode = mode
+            addon_keymaps.append((paint_keymap, item))
+
 
 def unregister():
     if bpy.app.timers.is_registered(mark_stencil_runtime):
@@ -1347,6 +1480,7 @@ def unregister():
         SPLENCIL_PT_actions_panel,
         SPLENCIL_PT_view3d_panel,
         PAINT_OT_stamp_splencil,
+        PAINT_OT_transform_splencil,
         PAINT_OT_flip_splencil_horizontal,
         PAINT_OT_reset_splencil,
         PAINT_OT_paste_splencil_rembg,

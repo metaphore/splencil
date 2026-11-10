@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${1:-1.0.0}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
+version="${1:-}"
+if [[ $# -eq 0 ]]; then
+  version="$(sed -nE '
+    /^bl_info[[:space:]]*=[[:space:]]*\{/,/^\}/ {
+      s/^[[:space:]]*"version":[[:space:]]*\(([0-9]+),[[:space:]]*([0-9]+),[[:space:]]*([0-9]+)\),[[:space:]]*$/\1.\2.\3/p
+    }
+  ' "$repo_root/splencil.py")"
+fi
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'Error: expected a release version in splencil.py or as an argument (major.minor.patch).\nUsage: %s [version]\n' "$0" >&2
+  exit 2
+fi
+
 dist_dir="$repo_root/dist"
 stage_dir="$dist_dir/splencil"
 zip_path="$dist_dir/splencil-$version.zip"
 
 rm -rf "$stage_dir"
-mkdir -p "$stage_dir/helpers"
+mkdir -p "$stage_dir/assets" "$stage_dir/helpers"
 
 cp "$repo_root/splencil.py" "$stage_dir/__init__.py"
+cp "$repo_root/assets/splencil-brush.png" "$stage_dir/assets/splencil-brush.png"
 cp "$repo_root/helpers/cliprembg.py" "$stage_dir/helpers/cliprembg.py"
 rm -f "$zip_path"
 
